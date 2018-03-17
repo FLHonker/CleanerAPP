@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingBottom="@dimen/activity_vertical_margin"
+    android:paddingLeft="@dimen/activity_horizontal_margin"
+    android:paddingRight="@dimen/activity_horizontal_margin"
+    android:paddingTop="@dimen/activity_vertical_margin"
+    tools:context="com.liuyan.cleaner.DeviceControlActivity"
+    android:background="@drawable/background">
+ <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+     android:orientation="vertical"
+     android:background="@drawable/textbackground"
+     android:paddingLeft="10dp"
+     android:paddingTop="10dp"
+     android:paddingBottom="10dp">
+
+     <TextView
+         android:id="@+id/device_addr"
+         android:layout_width="match_parent"
+         android:layout_height="50dp"
+         android:text="设备地址:" />
+
+     <TextView
+         android:id="@+id/connect_state"
+         android:layout_width="match_parent"
+         android:layout_height="50dp"
+         android:text="连接状态:"
+         />
+
+     <TextView
+         android:id="@+id/battery"
+         android:layout_width="match_parent"
+         android:layout_height="50dp"
+         android:text="电池电量:" />
+
+ </LinearLayout>
+    <Button
+        android:id="@+id/start_btn"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:layout_width="150dp"
+        android:background="@drawable/start_button_selector"
+        android:layout_height="150dp"
+        android:layout_centerVertical="true"
+        android:layout_centerHorizontal="true"
+        android:text="启动" />
+
+    <TextView
+        android:text="清洁模式选择"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/textView"
+        android:layout_below="@+id/start_btn"
+        android:layout_alignParentStart="true"
+        android:textAlignment="textStart" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/model_buttons"
+        android:layout_below="@+id/textView"
+        android:layout_alignParentStart="true"
+        android:orientation="horizontal"
+        android:layout_weight="1"
+        android:layout_marginTop="5dp">
+
+        <Button
+            android:text="强力模式"
+            android:layout_width="100dp"
+            android:background="@drawable/rout_button_selector"
+            android:id="@+id/model2"
+            android:layout_weight="1"
+            android:layout_height="60dp" />
+
+        <Button
+            android:text="均衡模式"
+            android:layout_width="100dp"
+            android:id="@+id/model0"
+            android:background="@drawable/rout_button_selector"
+            android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:layout_height="60dp" />
+
+        <Button
+            android:text="快速模式"
+            android:layout_width="100dp"
+            android:background="@drawable/rout_button_selector"
+            android:id="@+id/model1"
+
+            android:layout_weight="1"
+            android:layout_marginLeft="10dp"
+            android:layout_height="60dp" />
+
+    </LinearLayout>
+   <TextView
+       android:id="@+id/rout_select"
+       android:layout_width="match_parent"
+       android:layout_height="wrap_content"
+       android:layout_below="@id/model_buttons"
+       android:layout_marginTop="10dp"
+       android:text="路径选择"/>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_below="@id/rout_select"
+        android:layout_marginTop="10dp">
+        <Button
+            android:text="路径一"
+            android:layout_height="60dp"
+            android:id="@+id/rout1"
+            android:background="@drawable/rout_button_selector"
+            android:textAlignment="center"
+            android:layout_weight="1"
+            android:layout_width="100dp" />
+        <Button
+            android:text="扫描"
+            android:layout_width="100dp"
+            android:layout_height="60dp"
+            android:textAlignment="center"
+            android:layout_marginLeft="10dp"
+            android:layout_weight="1"
+            android:background="@drawable/rout_button_selector"
+            android:id="@+id/scan" />
+        <Button
+            android:text="路径二"
+            android:layout_height="60dp"
+            android:id="@+id/rout2"
+            android:textAlignment="center"
+            android:layout_marginLeft="10dp"
+            android:layout_weight="1"
+            android:background="@drawable/rout_button_selector"
+            android:layout_width="100dp" />
+    </LinearLayout>
+</RelativeLayout>
