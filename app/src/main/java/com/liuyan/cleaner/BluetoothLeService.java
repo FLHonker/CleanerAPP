@@ -106,7 +106,6 @@ public class BluetoothLeService extends Service {
         sendBroadcast(intent);
     }
 
-
     public class LocalBinder extends Binder {
         BluetoothLeService getService() {
             return BluetoothLeService.this;
@@ -209,8 +208,7 @@ public class BluetoothLeService extends Service {
         mBluetoothGatt.writeCharacteristic(characteristic);
     }
 
-    public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic,
-                                              boolean enabled) {
+    public void setCharacteristicNotification(BluetoothGattCharacteristic characteristic, boolean enabled) {
         if (mBluetoothAdapter == null || mBluetoothGatt == null) {
             Log.w(TAG, "BluetoothAdapter not initialized");
             return;
