@@ -30,16 +30,16 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
     private Button start_btn;
     private Button planClean_btn, connect_btn, releaseWater_btn, washWater_btn;     //定时按钮，连接按钮，排水按钮，冲刷按钮
     private  final String mDeviceAddress="C8:FD:19:4B:21:E7";
-    private TextView device_addr;
-    private TextView connect_state;
-    private TextView work_state;
-    private TextView water_temp;
-    private TextView plan_clean;
+    private final String mDeviceName = "DX-BT05超声波洗鞋机";
+    private TextView device_addr, device_name, connect_state, work_state, water_temp, plan_clean;
+    private boolean planOn = false;   //启用定时flag
+    private int extraTime = -1;      //剩余时间，分钟；-1代表未启用定时清洗
     private List<BluetoothGattService> test;
     private BluetoothLeService mBluetoothLeService;
     private  BluetoothGattCharacteristic temp=null;  //用来获取BLE设备的串口服务
     public byte[] bytes=new byte[20];
-    private int DevStatus = 2;    //设备状态，0-停止，1-运行，2-未连接，3-超声清洗，4-中间排水，5-冲刷，6-排水，7-已排水
+    private int DevStatus = 2;    //设备状态，0-停止，1-已连接，2-未连接，3-超声清洗，4-中间排水，5-冲刷，6-排水，7-已排水
+    private byte instSend[] = new byte[1];   //APP向单片机发送的指令，设置定时：0-60 minutes， 手动排水：61，手动冲洗：62，运行：63，关机：64
     // Code to manage Service lifecycle.
     //获取服务
     private final ServiceConnection mServiceConnection = new ServiceConnection() {
@@ -65,11 +65,16 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         public void onReceive(Context context, final Intent intent) {
             final String action = intent.getAction();
             if (BluetoothLeService.ACTION_GATT_CONNECTED.equals(action)) {
+                // 连接成功！
                 Log.e("测试点1","连接成功");
                 connect_state.setText("连接状态: 连接成功");
                 start_btn.setBackgroundResource(R.drawable.start_button_pressed);
                 start_btn.setText("Start");
+                start_btn.setContextClickable(true);
+                device_addr.setText("设备地址: " + mDeviceAddress);
+                device_name.setText("设备名称: " + mDeviceName);
                 DevStatus = 0;
+
                 final MediaPlayer connect_audio=MediaPlayer.create(DeviceControlActivity.this,R.raw.connected);
                 connect_audio.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                     @Override
@@ -91,12 +96,7 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                     }
                 });
             } else if (BluetoothLeService.ACTION_GATT_DISCONNECTED.equals(action)) {
-                connect_state.setText("连接状态："+" 断开连接,请点击扫描重新连接！");
-                start_btn.setBackgroundResource(R.drawable.start_button_normal);
-                start_btn.setText("设备未运行");
-                start_btn.setClickable(false);
-                DevStatus = 2;
-                Log.e("测试点2","断开连接");
+                connectFailed();
                 final MediaPlayer disconnect_audio=MediaPlayer.create(DeviceControlActivity.this,R.raw.disconnected);
                 disconnect_audio.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
                     @Override
@@ -122,16 +122,14 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                 for(int i=0;i<test.size();i++){
                     Log.e("服务"+i,test.get(i).toString());
                 }
-//                sendData("aa");
-                Log.e("启动","ok");
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
-                String receiveData=intent.getStringExtra(BluetoothLeService.EXTRA_DATA).toLowerCase();
+                String receiveData=intent.getStringExtra(BluetoothLeService.EXTRA_DATA);
+                byte revData[] = receiveData.getBytes();
                 Log.e("数据",receiveData);
-                Toast.makeText(context,receiveData,Toast.LENGTH_SHORT).show();
-                water_temp.setText(receiveData);   // test recevice
-//                  if(receiveData.length()==17){
-//                      dataProcess(receiveData);
-//                  }
+//                Toast.makeText(context,receiveData,Toast.LENGTH_SHORT).show();    //test1
+                  if(receiveData.length() == 3){
+                      dataProcess(receiveData);
+                  }
             }
             Log.d("action",action);
         }
@@ -140,29 +138,62 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
     //接受数据处理函数，字符串解析
     public void dataProcess(String receiveData){
         Log.e("接收的数据",receiveData);
+        // String转化为byte[]：revData[0]-->工作状态，revData[1]-->水温，revData[2]-->定时剩余（min）
+        byte revData[] = receiveData.getBytes();
+        //start按钮初始化
+        start_btn.setContextClickable(true);
+        start_btn.setText("Stop");
+        start_btn.setBackgroundResource(R.drawable.stop_button_pressed);
 
-        if(receiveData.compareTo("st") == 0){
-            start_btn.setBackgroundResource(R.drawable.stop_button_selector);
-            start_btn.setClickable(true);
-            start_btn.setText("Stop");
-
-        }else  if(receiveData.compareTo("cl") == 0){
-            start_btn.setBackgroundResource(R.drawable.start_button_normal);
-            start_btn.setClickable(false);
-            start_btn.setText("设备未运行");
-
+        // 工作状态显示，0-停止，1-已连接，2-未连接，3-超声清洗，4-中间排水，5-冲刷，6-排水，7-已排水
+        switch (revData[0]){
+            case 0:
+                work_state.setText("工作状态: 待机");
+                start_btn.setContextClickable(true);
+                start_btn.setText("Start");
+                start_btn.setBackgroundResource(R.drawable.start_button_pressed);
+                DevStatus = 0;
+                break;
+            case 1:
+                work_state.setText("工作状态: 连接成功！");
+                DevStatus = 1;
+                break;
+            //case 2: 无意义，无连接时不会受到数据帧
+            case 3:
+                work_state.setText("工作状态: 超声清洗");
+                DevStatus = 3;
+                break;
+            case 4:
+                work_state.setText("工作状态: 中间排水");
+                DevStatus = 4;
+                break;
+            case 5:
+                work_state.setText("工作状态: 冲洗中");
+                DevStatus = 5;
+                break;
+            case 6:
+                work_state.setText("工作状态: 排水中");
+                DevStatus = 6;
+                break;
+            case 7:
+                work_state.setText("工作状态: 已排水");
+                DevStatus = 7;
+                break;
+            default:
+                work_state.setText("工作状态: ");
         }
 
-        if (receiveData.compareTo("61") == 0){
-            work_state.setText("工作状态：清洗");
-        }else if (receiveData.compareTo("62") == 0){
-            work_state.setText("工作状态：冲洗");
-        }else if (receiveData.compareTo("63") == 0){
-            work_state.setText("工作状态：排水");
+        // 水温显示
+        water_temp.setText("水温: " + revData[1] + "℃");
+
+        // 定时显示
+        if(planOn){
+            extraTime = revData[2];
+            plan_clean.setText("定时: " + extraTime + "分钟");
+        }else {
+            extraTime = -1;
+            plan_clean.setText("定时: ");
         }
-
-        water_temp.setText("水温:"+receiveData+"℃");
-
     }
 
     //报警弹窗函数
@@ -187,45 +218,88 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                  dialog.show();
              }
          });
-
      }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Intent gattServiceIntent =new Intent(this,BluetoothLeService.class);
-        bindService(gattServiceIntent,mServiceConnection,BIND_AUTO_CREATE);
-        start_btn =(Button)findViewById(R.id.start_btn);
-        connect_btn =(Button)findViewById(R.id.connect);
-        device_addr=(TextView)findViewById(R.id.device_addr) ;
-        connect_state=(TextView)findViewById(R.id.connect_state);
-        work_state=(TextView)findViewById(R.id.workState) ;
-        water_temp= (TextView) findViewById(R.id.temperature);
-        plan_clean=(TextView)findViewById(R.id.time);
+        Intent gattServiceIntent = new Intent(this,BluetoothLeService.class);
+        bindService(gattServiceIntent,mServiceConnection,BIND_AUTO_CREATE);    //绑定服务
+        // 获取控件byId
+        start_btn = (Button)findViewById(R.id.start_btn);
+        connect_btn = (Button)findViewById(R.id.connect);
+        planClean_btn = (Button)findViewById(R.id.planClean);
+        releaseWater_btn = (Button)findViewById(R.id.release_water);
+        washWater_btn = (Button)findViewById(R.id.wash_water);
+        device_addr = (TextView)findViewById(R.id.device_addr);
+        device_name = (TextView)findViewById(R.id.device_name);
+        connect_state = (TextView)findViewById(R.id.connect_state);
+        work_state = (TextView)findViewById(R.id.workState) ;
+        water_temp = (TextView) findViewById(R.id.temperature);
+        plan_clean = (TextView)findViewById(R.id.time);
+        // click事件
         start_btn.setOnClickListener(this);
         connect_btn.setOnClickListener(this);
-
-        Log.e("连接设备的地址",mDeviceAddress);
-        device_addr.setText("设备地址:"+" "+mDeviceAddress);
-        
+        planClean_btn.setOnClickListener(this);
+        releaseWater_btn.setOnClickListener(this);
+        washWater_btn.setOnClickListener(this);
     }
 
-    //点击事件处理函数
+    // 按钮点击事件处理函数，主要是完成数据指令传送
+    //APP向单片机发送的指令，设置定时：0-60 minutes， 手动排水：61，手动冲洗：62，运行：63，关机：64
     @Override
     public void onClick(View v) {
         int id=v.getId();
+        instSend[0] = -1;
         switch(id){
-            case R.id.connect:{
+            // 连接按钮
+            case R.id.connect: {
                 mBluetoothLeService.connect(mDeviceAddress);
-//                sendData("connected");
+                DevStatus = 1;
+                instSend[0] = 64;
                 break;
             }
+            //开始按钮
             case R.id.start_btn: {
-                sendData("s3");    //停止
+                start_btn.setContextClickable(true);
+                if(DevStatus == 0){    //如果当前状态是待机
+                    start_btn.setText("Stop");
+                    start_btn.setBackgroundResource(R.drawable.stop_button_pressed);
+                    DevStatus = 2;    //已连接，也是开始运行
+                    instSend[0] = 63;
+                }else if(DevStatus != 2){    //如果当前状态不是未连接
+                    start_btn.setText("Start");
+                    start_btn.setBackgroundResource(R.drawable.start_button_pressed);
+                    DevStatus = 0;
+                    instSend[0] = 64;
+                }
+                break;
+            }
+            //手动排水按钮
+            case R.id.release_water: {
+                DevStatus = 6;
+                instSend[0] = 61;
+                break;
+            }
+            //手动冲刷按钮
+            case R.id.wash_water: {
+                DevStatus = 5;
+                instSend[0] = 62;
+                break;
+            }
+            //定时按钮,弹窗选择时间定时
+            case R.id.planClean: {
+                planOn = true;
+                instSend[0] = (byte)extraTime;
                 break;
             }
         }
+
+        // 封装帧，发送数据
+        String instStr = new String(instSend);
+        sendData(instStr);
+        Toast.makeText(this,instStr + "Send successfully!",Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -277,10 +351,24 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                  mBluetoothLeService.setCharacteristicNotification(temp, true);
                  Log.e("点击事件"+data,"已运行");
              }
-             //发送结束符
-//             endSend();
          }else{
              Log.e("temp","请重新连接");
+             connectFailed();
          }
      }
+
+     // 连接失败
+    private void connectFailed(){
+        connect_state.setText("连接状态: 断开连接,请点击重新连接！");
+        device_addr.setText("设备地址: ");
+        device_name.setText("设备名称: ");
+        work_state.setText("工作状态: ");
+        water_temp.setText("水温: ");
+        plan_clean.setText("定时: ");
+        start_btn.setBackgroundResource(R.drawable.start_button_normal);
+        start_btn.setText("设备未连接");
+        start_btn.setClickable(false);
+        DevStatus = 2;
+        Log.e("测试点2","断开连接");
+    }
 }
