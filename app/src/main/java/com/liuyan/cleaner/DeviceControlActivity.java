@@ -20,6 +20,7 @@ import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.nio.charset.Charset;
 import java.util.List;
 import java.util.UUID;
 
@@ -32,8 +33,7 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
     private  final String mDeviceAddress="C8:FD:19:4B:21:E7";
     private final String mDeviceName = "DX-BT05超声波洗鞋机";
     private TextView device_addr, device_name, connect_state, work_state, water_temp, plan_clean;
-    private boolean planOn = false;   //启用定时flag
-    private int extraTime = -1;      //剩余时间，分钟；-1代表未启用定时清洗
+    private int extraTime = 61;      //剩余时间，分钟；61代表未启用定时清洗
     private List<BluetoothGattService> test;
     private BluetoothLeService mBluetoothLeService;
     private  BluetoothGattCharacteristic temp=null;  //用来获取BLE设备的串口服务
@@ -123,23 +123,100 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                     Log.e("服务"+i,test.get(i).toString());
                 }
             } else if (BluetoothLeService.ACTION_DATA_AVAILABLE.equals(action)) {
-                String receiveData=intent.getStringExtra(BluetoothLeService.EXTRA_DATA);
-                byte revData[] = receiveData.getBytes();
-                Log.e("数据",receiveData);
+                String receiveData = intent.getStringExtra(BluetoothLeService.EXTRA_DATA);
+                char revData = receiveData.charAt(0);
+                byte byteData = (byte)revData;
+;                Log.e("String数据: ",receiveData);
+                System.out.println("String数据: "+receiveData);
+                System.out.println(revData);
+                System.out.println(byteData);
+
 //                Toast.makeText(context,receiveData,Toast.LENGTH_SHORT).show();    //test1
-                  if(receiveData.length() == 3){
-                      dataProcess(receiveData);
-                  }
+
+                dataProcess(byteData);
             }
-            Log.d("action",action);
         }
     };
+
+    //重载函数：接受byte数据处理，byte解析
+    public void dataProcess(byte receiveData){
+        // byte.bit[0]-byte.bit[1]为帧头：revData[00]-->工作状态，revData[01]-->水温，revData[10]-->定时剩余（min）
+        // byte后6 bit为数据
+        int frameHead = receiveData >> 6;        //取头帧
+        int frameData = receiveData & (byte)63;  //取数据
+//        System.out.println("frame head = "+frameHead);
+//        System.out.println("frame data = "+frameData);
+
+        //start按钮初始化
+        start_btn.setContextClickable(true);
+        start_btn.setText("Stop");
+        start_btn.setBackgroundResource(R.drawable.stop_button_pressed);
+
+        // 工作状态显示，0-停止，1-已连接，2-未连接，3-超声清洗，4-中间排水，5-冲刷，6-排水，7-已排水
+        if(frameHead == 0){
+            switch (frameData){
+                case 0:
+                    work_state.setText("工作状态: 待机");
+                    start_btn.setContextClickable(true);
+                    start_btn.setText("Start");
+                    start_btn.setBackgroundResource(R.drawable.start_button_pressed);
+                    DevStatus = 0;
+                    break;
+                case 1:
+                    work_state.setText("工作状态: 连接成功！");
+                    DevStatus = 1;
+                    break;
+                //case 2: 无意义，无连接时不会受到数据帧
+                case 3:
+                    work_state.setText("工作状态: 超声清洗");
+                    DevStatus = 3;
+                    break;
+                case 4:
+                    work_state.setText("工作状态: 中间排水");
+                    DevStatus = 4;
+                    break;
+                case 5:
+                    work_state.setText("工作状态: 冲洗中");
+                    DevStatus = 5;
+                    break;
+                case 6:
+                    work_state.setText("工作状态: 排水中");
+                    DevStatus = 6;
+                    break;
+                case 7:
+                    work_state.setText("工作状态: 已排水");
+                    DevStatus = 7;
+                    break;
+                default:
+                    work_state.setText("工作状态: ");
+            }
+
+        } else if(frameHead == 1){
+            // 水温显示
+            water_temp.setText("水温: " + frameData + "℃");
+        } else if(frameHead == 2){
+            // 定时显示
+            if(extraTime != 61){
+                extraTime = frameData;
+                plan_clean.setText("定时: " + extraTime + "分钟");
+            }else {
+                extraTime = -1;
+                plan_clean.setText("定时: None");
+            }
+        }
+    }
+
 
     //接受数据处理函数，字符串解析
     public void dataProcess(String receiveData){
         Log.e("接收的数据",receiveData);
         // String转化为byte[]：revData[0]-->工作状态，revData[1]-->水温，revData[2]-->定时剩余（min）
-        byte revData[] = receiveData.getBytes();
+        byte revData[] = receiveData.getBytes(Charset.forName("ISO8859-1"));
+
+        System.out.println("****** revData: *******");
+//        System.out.println(revData[0]);
+//        System.out.println(revData[1]);
+//        System.out.println(revData[2]);
         //start按钮初始化
         start_btn.setContextClickable(true);
         start_btn.setText("Stop");
@@ -187,38 +264,14 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         water_temp.setText("水温: " + revData[1] + "℃");
 
         // 定时显示
-        if(planOn){
+        if(extraTime != 61){
             extraTime = revData[2];
             plan_clean.setText("定时: " + extraTime + "分钟");
         }else {
-            extraTime = -1;
-            plan_clean.setText("定时: ");
+            extraTime = 61;
+            plan_clean.setText("定时: None");
         }
     }
-
-    //报警弹窗函数
-     public void alarm(int resource, final String message){
-         final MediaPlayer mediaPlayer=MediaPlayer.create(DeviceControlActivity.this,resource);
-         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
-             @Override
-             public void onPrepared(MediaPlayer mp) {
-                 mediaPlayer.setLooping(true);
-                 mediaPlayer.start();
-                 AlertDialog.Builder builder= new AlertDialog.Builder(DeviceControlActivity.this);
-                 builder.setTitle("警告");
-                 builder.setMessage(message);
-                 builder.setNegativeButton("停止警报",new DialogInterface.OnClickListener(){
-                     @Override
-                     public void onClick(DialogInterface dialog, int which) {
-                         mediaPlayer.stop();
-                         mediaPlayer.release();
-                     }
-                 });
-                 AlertDialog dialog= builder.create();
-                 dialog.show();
-             }
-         });
-     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -266,11 +319,13 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                 if(DevStatus == 0){    //如果当前状态是待机
                     start_btn.setText("Stop");
                     start_btn.setBackgroundResource(R.drawable.stop_button_pressed);
-                    DevStatus = 2;    //已连接，也是开始运行
+                    work_state.setText("工作状态: 清洗");
+                    DevStatus = 1;    //已连接，也是开始运行
                     instSend[0] = 63;
                 }else if(DevStatus != 2){    //如果当前状态不是未连接
                     start_btn.setText("Start");
                     start_btn.setBackgroundResource(R.drawable.start_button_pressed);
+                    work_state.setText("工作状态: 待机");
                     DevStatus = 0;
                     instSend[0] = 64;
                 }
@@ -290,7 +345,6 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
             }
             //定时按钮,弹窗选择时间定时
             case R.id.planClean: {
-                planOn = true;
                 instSend[0] = (byte)extraTime;
                 break;
             }
@@ -371,4 +425,29 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         DevStatus = 2;
         Log.e("测试点2","断开连接");
     }
+
+    //报警弹窗函数
+    public void alarm(int resource, final String message){
+        final MediaPlayer mediaPlayer=MediaPlayer.create(DeviceControlActivity.this,resource);
+        mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
+            @Override
+            public void onPrepared(MediaPlayer mp) {
+                mediaPlayer.setLooping(true);
+                mediaPlayer.start();
+                AlertDialog.Builder builder= new AlertDialog.Builder(DeviceControlActivity.this);
+                builder.setTitle("警告");
+                builder.setMessage(message);
+                builder.setNegativeButton("停止警报",new DialogInterface.OnClickListener(){
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        mediaPlayer.stop();
+                        mediaPlayer.release();
+                    }
+                });
+                AlertDialog dialog= builder.create();
+                dialog.show();
+            }
+        });
+    }
+
 }
