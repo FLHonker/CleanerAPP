@@ -21,6 +21,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.nio.charset.Charset;
+import java.io.DataInputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -40,6 +41,7 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
     public byte[] bytes=new byte[20];
     private int DevStatus = 2;    //设备状态，0-停止，1-已连接，2-未连接，3-超声清洗，4-中间排水，5-冲刷，6-排水，7-已排水
     private byte instSend[] = new byte[1];   //APP向单片机发送的指令，设置定时：0-60 minutes， 手动排水：61，手动冲洗：62，运行：63，关机：64
+    private planClean mPlanClean;     //弹窗设置定时
     // Code to manage Service lifecycle.
     //获取服务
     private final ServiceConnection mServiceConnection = new ServiceConnection() {
@@ -126,24 +128,26 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                 String receiveData = intent.getStringExtra(BluetoothLeService.EXTRA_DATA);
                 char revData = receiveData.charAt(0);
                 byte byteData = (byte)revData;
-;                Log.e("String数据: ",receiveData);
-                System.out.println("String数据: "+receiveData);
+                //int uByteData = getUnsignedByte(byteData);
+
+                Log.e("String数据",receiveData);
                 System.out.println(revData);
                 System.out.println(byteData);
-
 //                Toast.makeText(context,receiveData,Toast.LENGTH_SHORT).show();    //test1
-
-                dataProcess(byteData);
+                dataProcess(revData);
             }
         }
     };
 
-    //重载函数：接受byte数据处理，byte解析
-    public void dataProcess(byte receiveData){
+    //重载函数：接受char数据处理，char解析
+    //Java中农char是16位的Unicode编码，byte只能表示-128-127，当枕头为10是会大于128而越界。
+    //故此处采用char型数据来进行位运算解析帧头和数据帧
+    public void dataProcess(char receiveData){
         // byte.bit[0]-byte.bit[1]为帧头：revData[00]-->工作状态，revData[01]-->水温，revData[10]-->定时剩余（min）
         // byte后6 bit为数据
-        int frameHead = receiveData >> 6;        //取头帧
-        int frameData = receiveData & (byte)63;  //取数据
+        int frameHead = receiveData >> 6;   //取头帧
+        int frameData = receiveData & (char)63;  //取数据
+        System.out.println("frameData:" + frameData);
 //        System.out.println("frame head = "+frameHead);
 //        System.out.println("frame data = "+frameData);
 
@@ -194,13 +198,13 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         } else if(frameHead == 1){
             // 水温显示
             water_temp.setText("水温: " + frameData + "℃");
-        } else if(frameHead == 2){
+        } else if(true){
             // 定时显示
             if(extraTime != 61){
                 extraTime = frameData;
                 plan_clean.setText("定时: " + extraTime + "分钟");
             }else {
-                extraTime = -1;
+                extraTime = 61;
                 plan_clean.setText("定时: None");
             }
         }
@@ -345,6 +349,7 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
             }
             //定时按钮,弹窗选择时间定时
             case R.id.planClean: {
+                showDialog();
                 instSend[0] = (byte)extraTime;
                 break;
             }
@@ -353,7 +358,7 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         // 封装帧，发送数据
         String instStr = new String(instSend);
         sendData(instStr);
-        Toast.makeText(this,instStr + "Send successfully!",Toast.LENGTH_SHORT).show();
+//        Toast.makeText(this,instStr + "Send successfully!",Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -424,6 +429,35 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         start_btn.setClickable(false);
         DevStatus = 2;
         Log.e("测试点2","断开连接");
+    }
+
+    //弹出定时选择框
+    public void showDialog() {
+        mPlanClean = new planClean(this,onClickListener);
+        mPlanClean.show();
+    }
+
+    //定时框按钮事件响应
+    private View.OnClickListener onClickListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View v) {
+            switch (v.getId()) {
+                case R.id.set_cancel:
+                    extraTime = 61;
+                    mPlanClean.dismiss();
+                    break;
+                case R.id.set_ok:
+                    extraTime = mPlanClean.getInitTime();
+                    Toast.makeText(getApplicationContext(), "您设置的定时时间为:"+extraTime+"分钟", Toast.LENGTH_SHORT).show();
+                    mPlanClean.dismiss();
+                    break;
+            }
+        }
+    };
+
+    //将data字节型数据转换为0~255 (0xFF 即BYTE)。
+    public int getUnsignedByte(byte data){
+        return data&0x0FF ;
     }
 
     //报警弹窗函数
