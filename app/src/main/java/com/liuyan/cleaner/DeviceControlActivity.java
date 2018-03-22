@@ -21,7 +21,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.nio.charset.Charset;
-import java.io.DataInputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,12 +28,13 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
     public static final String EXTRAS_DEVICE_NAME = "DEVICE_NAME";
     public static final String EXTRAS_DEVICE_ADDRESS = "DEVICE_ADDRESS";
     private static final String UUID_CHAR = "0000ffe1-0000-1000-8000-00805f9b34fb";
+    private final byte PLANOFF = 65;    //定时关闭标志位
     private Button start_btn;
     private Button planClean_btn, connect_btn, releaseWater_btn, washWater_btn;     //定时按钮，连接按钮，排水按钮，冲刷按钮
     private  final String mDeviceAddress="C8:FD:19:4B:21:E7";
     private final String mDeviceName = "DX-BT05超声波洗鞋机";
     private TextView device_addr, device_name, connect_state, work_state, water_temp, plan_clean;
-    private int extraTime = 61;      //剩余时间，分钟；61代表未启用定时清洗
+    private int extraTime = PLANOFF;      //剩余时间，分钟；61代表未启用定时清洗
     private List<BluetoothGattService> test;
     private BluetoothLeService mBluetoothLeService;
     private  BluetoothGattCharacteristic temp=null;  //用来获取BLE设备的串口服务
@@ -131,19 +131,23 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                 //int uByteData = getUnsignedByte(byteData);
 
                 Log.e("String数据",receiveData);
-                System.out.println(revData);
+                System.out.println(byteData);
                 System.out.println(byteData);
 //                Toast.makeText(context,receiveData,Toast.LENGTH_SHORT).show();    //test1
-                dataProcess(revData);
+                dataProcess(byteData);
             }
         }
     };
 
+    /* 通信协议_2，失败 */
     //重载函数：接受char数据处理，char解析
     //Java中农char是16位的Unicode编码，byte只能表示-128-127，当枕头为10是会大于128而越界。
     //故此处采用char型数据来进行位运算解析帧头和数据帧
-    public void dataProcess(char receiveData){
-        // byte.bit[0]-byte.bit[1]为帧头：revData[00]-->工作状态，revData[01]-->水温，revData[10]-->定时剩余（min）
+
+
+    /* 通信协议_3，byte解析 */
+    public void dataProcess(byte receiveData){
+        // byte.bit[0]-byte.bit[1]为帧头：revData[00]-->0-7工作状态，10-61水温，revData[01]-->定时剩余（min）
         // byte后6 bit为数据
         int frameHead = receiveData >> 6;   //取头帧
         int frameData = receiveData & (char)63;  //取数据
@@ -191,27 +195,24 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
                     work_state.setText("工作状态: 已排水");
                     DevStatus = 7;
                     break;
-                default:
-                    work_state.setText("工作状态: ");
+                default:   //revData[00] 10-61
+                    // 水温显示
+                    water_temp.setText("水温: " + frameData + "℃");
             }
 
-        } else if(frameHead == 1){
-            // 水温显示
-            water_temp.setText("水温: " + frameData + "℃");
-        } else if(true){
+        } else if(frameHead == 1) {
             // 定时显示
-            if(extraTime != 61){
+            if (extraTime != PLANOFF) {
                 extraTime = frameData;
                 plan_clean.setText("定时: " + extraTime + "分钟");
-            }else {
-                extraTime = 61;
+            } else {
+                extraTime = PLANOFF;
                 plan_clean.setText("定时: None");
             }
         }
     }
 
-
-    //接受数据处理函数，字符串解析
+    //接受数据处理函数，字符串解析,通信协议_1，失败
     public void dataProcess(String receiveData){
         Log.e("接收的数据",receiveData);
         // String转化为byte[]：revData[0]-->工作状态，revData[1]-->水温，revData[2]-->定时剩余（min）
@@ -443,11 +444,12 @@ public class DeviceControlActivity extends Activity implements View.OnClickListe
         public void onClick(View v) {
             switch (v.getId()) {
                 case R.id.set_cancel:
-                    extraTime = 61;
+                    extraTime = PLANOFF;
                     mPlanClean.dismiss();
                     break;
                 case R.id.set_ok:
                     extraTime = mPlanClean.getInitTime();
+                    plan_clean.setText("定时: " + extraTime + "分钟");
                     Toast.makeText(getApplicationContext(), "您设置的定时时间为:"+extraTime+"分钟", Toast.LENGTH_SHORT).show();
                     mPlanClean.dismiss();
                     break;
